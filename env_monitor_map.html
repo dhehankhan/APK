@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Road Environmental Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg:        #0b0f1a;
+    --panel:     #111827;
+    --panel2:    #1a2236;
+    --border:    #1f2d45;
+    --accent:    #00d4ff;
+    --accent2:   #7c3aed;
+    --text:      #e2e8f0;
+    --muted:     #64748b;
+    --success:   #10b981;
+    --warn:      #f59e0b;
+    --danger:    #ef4444;
+    --font-mono: 'Space Mono', monospace;
+    --font-body: 'DM Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 58px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1000;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .logo-text {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--text);
+  }
+  .logo-sub {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .header-meta {
+    display: flex; align-items: center; gap: 20px;
+  }
+  .badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(0,212,255,0.1);
+    border: 1px solid rgba(0,212,255,0.3);
+    color: var(--accent);
+    letter-spacing: 0.08em;
+  }
+  .badge.live::before {
+    content: '● ';
+    animation: blink 1.4s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── MAIN LAYOUT ── */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    width: 300px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .section {
+    padding: 18px 18px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-title {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* parameter buttons */
+  .param-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .param-btn {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 8px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .param-btn::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: var(--param-color, var(--accent));
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .param-btn:hover::before { opacity: 0.08; }
+  .param-btn.active {
+    border-color: var(--param-color, var(--accent));
+    box-shadow: 0 0 0 1px var(--param-color, var(--accent)),
+                0 0 16px -4px var(--param-color, var(--accent));
+  }
+  .param-btn.active::before { opacity: 0.12; }
+  .param-emoji { font-size: 20px; margin-bottom: 4px; display: block; }
+  .param-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--text);
+  }
+  .param-unit {
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 1px;
+  }
+
+  /* stats cards */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .stat-card {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .stat-label {
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .stat-value {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .stat-unit { font-size: 10px; color: var(--muted); margin-left: 2px; }
+
+  /* colour-coded status */
+  .status-bar {
+    display: flex; gap: 6px; flex-direction: column;
+  }
+  .status-row {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 11px;
+  }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 6px; display: inline-block;
+  }
+  .status-name { display: flex; align-items: center; color: var(--text); }
+  .status-val  { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+
+  /* Legend */
+  .legend-track {
+    height: 10px;
+    border-radius: 5px;
+    background: linear-gradient(to right, #10b981, #f59e0b, #ef4444);
+    margin-bottom: 6px;
+  }
+  .legend-labels {
+    display: flex; justify-content: space-between;
+    font-family: var(--font-mono); font-size: 9px; color: var(--muted);
+  }
+  .bubble-scale {
+    display: flex; align-items: flex-end; gap: 10px; margin-top: 10px;
+    padding: 10px 0;
+  }
+  .bubble-demo {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .bdot {
+    background: rgba(0,212,255,0.25);
+    border: 2px solid rgba(0,212,255,0.6);
+    border-radius: 50%;
+  }
+  .bdot-label { font-size: 9px; color: var(--muted); font-family: var(--font-mono); }
+
+  /* info panel */
+  .info-panel {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .info-panel strong { color: var(--text); }
+
+  /* ── MAP ── */
+  #map {
+    flex: 1;
+    position: relative;
+  }
+
+  /* Leaflet overrides */
+  .leaflet-container { background: #0b0f1a !important; }
+  .leaflet-control-zoom a {
+    background: var(--panel) !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+  }
+  .leaflet-control-zoom a:hover {
+    background: var(--panel2) !important;
+  }
+  .leaflet-control-attribution {
+    background: rgba(11,15,26,0.8) !important;
+    color: var(--muted) !important;
+  }
+
+  /* tooltip */
+  .bubble-tooltip {
+    background: var(--panel) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    color: var(--text) !important;
+    font-family: var(--font-body) !important;
+    font-size: 12px !important;
+    padding: 10px 14px !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+    min-width: 160px;
+  }
+  .tt-point {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--accent);
+    margin-bottom: 6px;
+    letter-spacing: 0.06em;
+  }
+  .tt-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 3px 0;
+  }
+  .tt-key { color: var(--muted); }
+  .tt-val { font-family: var(--font-mono); font-size: 11px; color: var(--text); }
+
+  /* map overlay title */
+  .map-overlay {
+    position: absolute;
+    top: 16px; right: 16px;
+    z-index: 800;
+    background: rgba(11,15,26,0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 11px;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .map-overlay strong { color: var(--text); font-family: var(--font-mono); font-size: 12px; display: block; margin-bottom: 2px; }
+
+  .selected-label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: rgba(0,212,255,0.1);
+    border: 1px solid rgba(0,212,255,0.3);
+    color: var(--accent);
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🛣️</div>
+    <div>
+      <div class="logo-text">ENVIROTRACK</div>
+      <div class="logo-sub">Road Air Quality Monitor</div>
+    </div>
+  </div>
+  <div class="header-meta">
+    <span class="badge live">DEMO MODE</span>
+    <span class="badge">30 STATIONS · 9 KM</span>
+    <span class="badge">AIRPORT RD · DHAKA</span>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <div class="section">
+      <div class="section-title">Parameter Select</div>
+      <div class="param-grid" id="paramGrid"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Statistics</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Min</div>
+          <div class="stat-value" id="statMin">—<span class="stat-unit" id="unitMin"></span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Max</div>
+          <div class="stat-value" id="statMax">—<span class="stat-unit" id="unitMax"></span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Average</div>
+          <div class="stat-value" id="statAvg">—<span class="stat-unit" id="unitAvg"></span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Std Dev</div>
+          <div class="stat-value" id="statStd">—<span class="stat-unit" id="unitStd"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Colour Scale</div>
+      <div class="legend-track" id="legendTrack"></div>
+      <div class="legend-labels">
+        <span id="legMin">LOW</span>
+        <span>MEDIUM</span>
+        <span id="legMax">HIGH</span>
+      </div>
+      <div class="bubble-scale">
+        <div class="bubble-demo"><div class="bdot" style="width:14px;height:14px"></div><div class="bdot-label">Low</div></div>
+        <div class="bubble-demo"><div class="bdot" style="width:22px;height:22px"></div><div class="bdot-label">Med</div></div>
+        <div class="bubble-demo"><div class="bdot" style="width:34px;height:34px"></div><div class="bdot-label">High</div></div>
+        <div style="margin-left:4px;font-size:10px;color:var(--muted);line-height:1.5">Bubble size<br>= relative<br>value</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Station Status</div>
+      <div class="status-bar" id="statusBar"></div>
+    </div>
+
+    <div class="section">
+      <div class="info-panel">
+        <strong>📍 Airport Road, Dhaka</strong><br>
+        30 monitoring stations · 300 m spacing · Uttara → Farmgate corridor.<br><br>
+        Click any bubble on the map to see all readings at that station.
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- MAP -->
+  <div id="map">
+    <div class="map-overlay">
+      <strong id="overlayParam">CO₂</strong>
+      Carbon Dioxide · ppm
+      <div class="selected-label" id="overlayBadge">● CO₂ Active</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ───────── DATA ───────── */
+const PARAMS = [
+  { key:'co2',   label:'CO₂',        unit:'ppm',  emoji:'💨', color:'#00d4ff', safe:400, warn:600,  danger:800  },
+  { key:'hcho',  label:'HCHO',       unit:'mg/m³',emoji:'⚗️', color:'#a78bfa', safe:0.04,warn:0.08, danger:0.15 },
+  { key:'sound', label:'Sound',      unit:'dB',   emoji:'🔊', color:'#fb923c', safe:55,  warn:70,   danger:85   },
+  { key:'humid', label:'Humidity',   unit:'%RH',  emoji:'💧', color:'#34d399', safe:40,  warn:65,   danger:85   },
+  { key:'tvoc',  label:'TVOC',       unit:'ppb',  emoji:'🧪', color:'#f472b6', safe:50,  warn:150,  danger:300  },
+  { key:'temp',  label:'Temp',       unit:'°C',   emoji:'🌡️', color:'#fbbf24', safe:28,  warn:33,   danger:38   },
+];
+
+// 30 points along Airport Road, Dhaka (~23.874 → 23.756 lat, ~90.399 lng)
+const BASE_LAT = 23.874, BASE_LNG = 90.399;
+const STEP_LAT = -(23.874 - 23.756) / 29;
+
+function rnd(min, max, dec=1){ return +(Math.random()*(max-min)+min).toFixed(dec); }
+
+const stations = Array.from({length:30}, (_,i) => ({
+  id: i+1,
+  lat: +(BASE_LAT + STEP_LAT*i).toFixed(6),
+  lng: +(BASE_LNG + (Math.sin(i*0.6)*0.003)).toFixed(6),
+  label: `ST-${String(i+1).padStart(2,'0')}`,
+  co2:   rnd(380, 850),
+  hcho:  rnd(0.01, 0.18, 3),
+  sound: rnd(48, 92),
+  humid: rnd(38, 88),
+  tvoc:  rnd(20, 380),
+  temp:  rnd(26, 40),
+}));
+
+/* ───────── MAP INIT ───────── */
+const map = L.map('map', { zoomControl: true }).setView([23.815, 90.401], 13);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap contributors © CARTO',
+  maxZoom: 19
+}).addTo(map);
+
+/* ───────── STATE ───────── */
+let currentParam = PARAMS[0];
+let circles = [];
+
+/* ───────── COLOUR HELPER ───────── */
+function valueColor(val, p) {
+  const t = (val - p.safe) / (p.danger - p.safe);
+  const c = Math.max(0, Math.min(1, t));
+  if (c < 0.5) {
+    const r = Math.round(16 + (245-16)*c*2);
+    const g = Math.round(185 - (185-158)*c*2);
+    const b = Math.round(129 - 129*c*2);
+    return `rgb(${r},${g},${b})`;
+  } else {
+    const cc = (c-0.5)*2;
+    const r = Math.round(245 + (239-245)*cc);
+    const g = Math.round(158 - 158*cc);
+    const b = Math.round(0);
+    return `rgb(${r},${g},${b})`;
+  }
+}
+
+/* ───────── BUBBLE SIZE ───────── */
+function bubbleRadius(val, p) {
+  const vals = stations.map(s => s[p.key]);
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+  const t = (val - mn) / (mx - mn + 0.0001);
+  return 12 + t * 28; // 12–40 px
+}
+
+/* ───────── DRAW ───────── */
+function draw(param) {
+  circles.forEach(c => map.removeLayer(c));
+  circles = [];
+
+  const vals = stations.map(s => s[param.key]);
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+  const avg = (vals.reduce((a,b)=>a+b,0)/vals.length);
+  const std = Math.sqrt(vals.reduce((a,b)=>a+(b-avg)**2,0)/vals.length);
+
+  // stats
+  document.getElementById('statMin').childNodes[0].textContent = mn.toFixed(param.key==='hcho'?3:1);
+  document.getElementById('statMax').childNodes[0].textContent = mx.toFixed(param.key==='hcho'?3:1);
+  document.getElementById('statAvg').childNodes[0].textContent = avg.toFixed(param.key==='hcho'?3:1);
+  document.getElementById('statStd').childNodes[0].textContent = std.toFixed(param.key==='hcho'?3:1);
+  ['Min','Max','Avg','Std'].forEach(k => document.getElementById('unit'+k).textContent = ' '+param.unit);
+
+  document.getElementById('legMin').textContent = mn.toFixed(param.key==='hcho'?3:0);
+  document.getElementById('legMax').textContent = mx.toFixed(param.key==='hcho'?3:0);
+
+  // overlay
+  const names = {co2:'CO₂',hcho:'HCHO',sound:'Sound Level',humid:'Humidity',tvoc:'TVOC',temp:'Temperature'};
+  const unitFull = {co2:'Carbon Dioxide · ppm',hcho:'Formaldehyde · mg/m³',sound:'Noise Level · dB',humid:'Relative Humidity · %RH',tvoc:'Total VOC · ppb',temp:'Ambient Temp · °C'};
+  document.getElementById('overlayParam').textContent = names[param.key];
+  document.getElementById('overlayBadge').textContent = '● '+names[param.key]+' Active';
+  document.getElementById('overlayBadge').style.color = param.color;
+  document.getElementById('overlayBadge').style.borderColor = param.color+'55';
+  document.getElementById('overlayBadge').style.background = param.color+'18';
+  document.querySelector('.map-overlay').childNodes[2].textContent = '\n'+unitFull[param.key];
+
+  // status bar
+  const sb = document.getElementById('statusBar');
+  sb.innerHTML = '';
+  stations.slice(0,8).forEach(s => {
+    const v = s[param.key];
+    const col = valueColor(v, param);
+    const row = document.createElement('div');
+    row.className = 'status-row';
+    row.innerHTML = `<span class="status-name"><span class="status-dot" style="background:${col}"></span>${s.label}</span>
+                     <span class="status-val">${v} ${param.unit}</span>`;
+    sb.appendChild(row);
+  });
+  const more = document.createElement('div');
+  more.style.cssText='font-size:9px;color:var(--muted);margin-top:4px;font-family:var(--font-mono)';
+  more.textContent = '+ 22 more stations on map';
+  sb.appendChild(more);
+
+  // bubbles
+  stations.forEach(s => {
+    const val = s[param.key];
+    const r = bubbleRadius(val, param);
+    const col = valueColor(val, param);
+    const dec = param.key==='hcho' ? 3 : (param.key==='temp'||param.key==='humid'?1:0);
+
+    // circle
+    const circle = L.circleMarker([s.lat, s.lng], {
+      radius: r,
+      fillColor: col,
+      fillOpacity: 0.32,
+      color: col,
+      weight: 1.5,
+      opacity: 0.8,
+    }).addTo(map);
+
+    // label
+    const divIcon = L.divIcon({
+      className: '',
+      html: `<div style="
+        font-family:'Space Mono',monospace;
+        font-size:${r < 18 ? 8 : 9}px;
+        font-weight:700;
+        color:#fff;
+        text-shadow:0 1px 3px rgba(0,0,0,0.9);
+        text-align:center;
+        width:${r*2}px;
+        margin-left:-${r}px;
+        margin-top:-${r}px;
+        height:${r*2}px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        pointer-events:none;
+      ">${val.toFixed(dec)}</div>`,
+      iconSize: [0,0],
+    });
+    const labelMarker = L.marker([s.lat, s.lng], { icon: divIcon, interactive: false }).addTo(map);
+
+    // tooltip on click
+    const ttHtml = `
+      <div class="tt-point">📍 ${s.label}</div>
+      <div class="tt-row"><span class="tt-key">CO₂</span><span class="tt-val">${s.co2} ppm</span></div>
+      <div class="tt-row"><span class="tt-key">HCHO</span><span class="tt-val">${s.hcho} mg/m³</span></div>
+      <div class="tt-row"><span class="tt-key">Sound</span><span class="tt-val">${s.sound} dB</span></div>
+      <div class="tt-row"><span class="tt-key">Humidity</span><span class="tt-val">${s.humid} %RH</span></div>
+      <div class="tt-row"><span class="tt-key">TVOC</span><span class="tt-val">${s.tvoc} ppb</span></div>
+      <div class="tt-row"><span class="tt-key">Temp</span><span class="tt-val">${s.temp} °C</span></div>
+    `;
+    circle.bindTooltip(ttHtml, { className:'bubble-tooltip', direction:'top', offset:[0,-r] });
+
+    circles.push(circle);
+    circles.push(labelMarker);
+  });
+
+  // legend gradient using param colour
+  document.getElementById('legendTrack').style.background =
+    `linear-gradient(to right, #10b981, #f59e0b, #ef4444)`;
+}
+
+/* ───────── PARAM BUTTONS ───────── */
+const grid = document.getElementById('paramGrid');
+PARAMS.forEach(p => {
+  const btn = document.createElement('div');
+  btn.className = 'param-btn' + (p.key===currentParam.key?' active':'');
+  btn.style.setProperty('--param-color', p.color);
+  btn.innerHTML = `<span class="param-emoji">${p.emoji}</span>
+                   <div class="param-label">${p.label}</div>
+                   <div class="param-unit">${p.unit}</div>`;
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.param-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentParam = p;
+    draw(p);
+  });
+  grid.appendChild(btn);
+});
+
+/* ───────── INIT ───────── */
+draw(currentParam);
+</script>
+</body>
+</html>
